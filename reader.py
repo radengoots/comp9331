@@ -1,62 +1,79 @@
-import sys
 import socket
-# total = len(sys.argv)
-# cmdargs = str(sys.argv)
-#
-# from socket import *
-# serverName = str(sys.argv[1]);
-# serverPort = 12000 #change this port number if required
-# clientSocket = socket(AF_INET, SOCK_STREAM)
-# clientSocket.connect((serverName, serverPort))
-# sentence = raw_input('Input lowercase sentence:')
-# clientSocket.send(sentence)
-# modifiedSentence = clientSocket.recv(1024)
-# print 'From Server:', modifiedSentence
-# clientSocket.close()
+import sys
 
 
-def get_open_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.bind(('', 0))
-        client_socket.listen(1)
-        return client_socket.getsockname()[1]
+def get_available_port():
+    c_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    c_s.bind(('', 0))
+    port = c_s.getsockname()[1]
+    c_s.close()
+    return port
 
 
-def Main():
+def main():
     # TODO: Validate user input
     # mode: push or pull
     # polling_interval: integer
     # user_name: string
     # server_name: string
     # server_port_number: integer 1024-65535
+
     mode = str(sys.argv[1])
     polling_interval = int(sys.argv[2])
     user_name = str(sys.argv[3])
     server_name = str(sys.argv[4])
-    server_port_number = sys(sys.argv[5])
+    server_port_number = int(sys.argv[5])
 
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((server_name, server_port_number))
+    available_port = get_available_port()
 
-    while True:
-        command = input()
+    try:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.bind(('', available_port))
+    except socket.error, msg:
+        print('Error code: ' + str(msg[0]) +
+              ' , Error message: ' + msg[1])
+        sys.exit()
+
+    print('Socket bind complete (Port ' + str(available_port) + ')')
+
+    try:
+        server_ip = socket.gethostbyname(server_name)
+    except socket.gaierror:
+        # could not resolve
+        print('Hostname could not be resolved. Exiting')
+        sys.exit()
+
+    client_socket.connect((server_ip, server_port_number))
+
+    print('Socket connected to ' + server_name + ' on IP ' + server_ip)
+
+    while 1:
+        user_command = str(raw_input('command: '))
+        command = user_command.split(' ')[0]
+
         if command == 'display':
-            continue
+            print(user_command)
+
+            try:
+                client_socket.send(user_command)
+            except socket.error:
+                # Send failed
+                print('Send failed')
+                sys.exit()
+
+            server_response = client_socket.recv(1024)
+            print('Received from server: ' + server_response)
+
         elif command == 'post_to_forum':
             continue
         elif command == 'read_post':
             continue
+        elif command == 'q':
+            break
         else:
-            print("Input error, please try again")
-    #     client_socket.sendto(bytes(message, "utf-8"), (host, port))
-    #     data = client_socket.recv(1024).decode()
-    #
-    #     print('Received from server: ' + data)
-    #
-    #     message = input(" -> ")
+            print("Incorrect command, please try again")
 
     client_socket.close()
 
 if __name__ == '__main__':
-    print(get_open_port())
-    # Main()
+    main()
