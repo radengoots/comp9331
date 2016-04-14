@@ -47,22 +47,30 @@ def main():
 
     print('Socket connected to ' + server_name + ' on IP ' + server_ip)
 
+    current_book = ''
+
+    #   client_socket.send('intro')
+    # client_socket.send(mode + ' ' + polling_interval + ' ' + user_name)
+
     while 1:
-        user_command = str(raw_input('command: '))
+        user_command = str(raw_input(''))
         command = user_command.split(' ')[0]
 
         if command == 'display':
             print(user_command)
-
+            current_book = user_command.split(' ')[1]
             try:
-                client_socket.send(user_command)
-            except socket.error:
+                client_socket.sendall(user_command + ' ' + user_name)
+                print('request sent')
+            except socket.error, msg:
                 # Send failed
-                print('Send failed')
+                print('Error code: ' + str(msg[0]) +
+                      ' , Error message: ' + msg[1])
                 sys.exit()
 
             server_response = client_socket.recv(1024)
-            print('Received from server: ' + server_response)
+            print(server_response)
+            # client_socket.sendall('stop')
 
         elif command == 'post_to_forum':
             continue

@@ -1,21 +1,44 @@
 import socket
 import sys
+from thread import *
 
+RECV_BUFFER = 4096
 
 def load_ebook(book_name, page_number):
     try:
-        ebook = open(book_name + '_page' + page_number, 'r')
-        print(ebook.read())
+        ebook_file = open(book_name + '_page' + page_number, 'r')
+        ebook = ebook_file.read()
     except IOError:
         print('File not found')
+        return 'File not found'
     else:
-        ebook.close()
+        ebook_file.close()
+        return ebook
+
+
+def clientThread(conn):
+    # while True:
+    while True:
+        request = conn.recv(RECV_BUFFER)
+        print("Request: " + request)
+        request = request.split(' ')
+        # print(request)
+        if request[0] == 'display':
+            ebook = load_ebook(request[1], request[2])
+            conn.sendall(ebook)
+        else:
+            conn.sendall(str(request))
+
+        if request[0] == 'stop':
+            break
+
+    conn.close()
 
 
 def main():
     # TODO: validate number of arguments
-    # input validation
-    RECV_BUFFER = 4096
+    # TODO: check port availability
+
     server_port = int(sys.argv[1])
 
     try:
@@ -27,25 +50,44 @@ def main():
         sys.exit()
 
     server_socket.listen(10)
-    conn, addr = server_socket.accept()
     print("The server is listening on port number " + str(server_port))
     print("The database for discussion posts has been initialised")
 
+    # conn, addr = server_socket.accept()
     while True:
-        print('Connected with ' + addr[0] + ': ' + str(addr[1]))
-        request = str(conn.recv(RECV_BUFFER))
+        try:
+            print('ready to receive')
+            conn, addr = server_socket.accept()
+        except socket.timeout:
+            print('Timed out waiting for a connection')
+            continue
+
+        print('Got request from ' + addr[0] + ': ' + str(addr[1]))
+
+        start_new_thread(clientThread, (conn,))
+        # # while True:
+        # request = conn.recv(RECV_BUFFER)
+        # print("Request: " + request)
+        # request = request.split(' ')
+        # # print(request)
+        # if request[0] == 'display':
+        #     ebook = load_ebook(request[1], request[2])
+        #     conn.sendall(ebook)
+        # if request[0] == 'stop':
+        #     print(request)
+        #     # conn.close()
+        #     break
+
+        # print("Request: " + request)
         # if not request:
         #     break
         # request = request.split(' ')
-        # print(request)
+        # # print(request)
         # if request[0] == 'display':
-        #     load_ebook(request[1], request[2])
+        #     ebook = load_ebook(request[1], request[2])
+        #     conn.sendall(ebook)
+        # conn.close()
 
-        print("From connected user: " + request)
-
-        conn.send(request)
-
-    conn.close()
     server_socket.close()
 
 
