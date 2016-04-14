@@ -1,0 +1,17 @@
+MANIFEST
+build
+dist
+doc/_build
+tags
+
+syntax: glob
+*.pyc
+*.sh.py
+*.swo
+*.swp
+*.tmp
+.DS_Store
+
+syntax: regexp
+(.*/)?(.*\.)?db$
+
