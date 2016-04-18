@@ -12,6 +12,7 @@ unread_posts = {}
 old_unread_posts = {}
 client_socket = ''
 pull_thread = ''
+push_thread = ''
 
 
 class RepeatingTimer:
@@ -152,12 +153,9 @@ def push_listener(port_number):
         sys.exit()
 
     push_socket.listen(1)
-    # print("The server is listening on port number " + str(server_port))
-    # print("The database for discussion posts has been initialised")
 
     while True:
         try:
-            print('Ready to receive')
             conn, addr = push_socket.accept()
         except socket.timeout:
             print('Timed out waiting for a connection')
@@ -165,7 +163,23 @@ def push_listener(port_number):
 
         push_update = conn.recv(RECV_BUFFER)
 
-        print('There are new posts')
+        book_name, page_number, post_id, username, line_number, post_content = str(
+            push_update).split(';')
+
+        if (book_name + page_number) in unread_posts:
+            unread_posts[
+                book_name + page_number].append(
+                [post_id, user_name, line_number, post_content])
+        else:
+            unread_posts[
+                book_name + page_number] = [[post_id, user_name, line_number,
+                                             post_content]]
+
+        # print(unread_posts)
+
+        if cur_book and cur_page_number:
+            if cur_book == book_name and cur_page_number == page_number:
+                print('There are new posts.')
 
         conn.close()
 
@@ -320,6 +334,8 @@ if __name__ == '__main__':
                                         display_ebook += line + '\n'
                                 else:
                                     display_ebook += line + '\n'
+                        else:
+                            display_ebook += line + '\n'
                         i += 1
                     if not display_ebook:
                         print('File not found')

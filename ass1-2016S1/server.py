@@ -68,6 +68,17 @@ def get_ebook(book_name, page_number, id_, mode):
         return ebook
 
 
+def push_notification(book_name, page_number, post_content):
+    push_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    for push_client in push_list:
+        push_socket.connect((push_client[0], push_client[1]))
+        push_socket.sendall(
+            book_name + ';' + page_number + ';' + str(post_content[0]) + ';' +
+            post_content[1] + ';' + str(post_content[2]) + ';' + post_content[
+                3])
+        push_socket.close()
+
+
 def client_thread(conn_, addr_):
     """
     Spawned thread for each client
@@ -126,6 +137,10 @@ def client_thread(conn_, addr_):
                         data[4]]]
                 print(discussions)
                 conn_.sendall('Post #' + post_id + ' saved')
+            if push_list:
+                push_notification(data[1], data[2],
+                                  [post_id, username, data[3],
+                                   data[4]])
 
         # Get post request in format: 'g', book_name, page_number, post_id
         elif request == 'g':
