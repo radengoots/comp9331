@@ -450,13 +450,6 @@ if __name__ == '__main__':
             print(chat_peer)
             print('Ready to chat')
             start_new_thread(chat_receiver, (chat_port,))
-            # ch_socket = socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # while 1:
-            #     message = raw_input('')
-            #     if message.upper() == 'STOP':
-            #         break
-            #     ch_socket.sendto(message, (sender_ip, sender_port))
-            # ch_socket.close()
 
         elif request == 'N':
             client_socket.sendall(request.lower())
