@@ -1,10 +1,11 @@
 import socket
 import sys
+import time
 import uuid
 from thread import *
 
 RECV_BUFFER = 4096
-# dict with key ip:port_number and value: username, mode, polling_int
+# dict with key ip:port_number and value: username, mode, polling_int, chat_listener_port
 clients = dict()
 # dict with key book_name_page_number
 # and value: [post_id, username, line_number, post]
@@ -12,6 +13,9 @@ discussions = dict()
 # dict with key username and value: [posts_id]
 read_posts = dict()
 push_list = []
+requester = ()
+target = ()
+ok = False
 
 
 def get_post(book_name, page_number, post_id):
@@ -86,7 +90,9 @@ def client_thread(conn_, addr_):
     :param addr_: client address
     :return: none
     """
-
+    global requester
+    global target
+    global ok
     # client_id = ip_address + port_number
     client_id = addr_[0] + ':' + str(addr_[1])
     while True:
@@ -96,11 +102,13 @@ def client_thread(conn_, addr_):
         data = data.split(';')
         request = data[0]
 
-        # Setup request in format: 's', username, mode, polling_interval
+        # Setup request in format: 's', username, mode,
+        #                           polling_interval, chat_listener_port
         if request == 's':
             clients.update({client_id: [data[1],
                                         data[2],
-                                        int(data[3])]})
+                                        int(data[3]),
+                                        int(data[4])]})
             conn_.sendall('ok')
             if data[2] == 'push':
                 listener_port = int(conn_.recv(RECV_BUFFER))
@@ -141,7 +149,6 @@ def client_thread(conn_, addr_):
                 push_notification(data[1], data[2],
                                   [post_id, username, data[3],
                                    data[4]])
-
         # Get post request in format: 'g', book_name, page_number, post_id
         elif request == 'g':
             post = get_post(data[1], data[2], data[3])
@@ -151,7 +158,31 @@ def client_thread(conn_, addr_):
                 conn_.sendall('Post not found')
         # Setup chat module
         elif request == 'chat':
-            pass
+            requester = (addr_[0], addr_[1], clients[client_id][3])
+            target_username = data[1]
+            print('Chat request from ' + clients[client_id][
+                0] + ' to talk to ' + target_username)
+            # requester = [addr_[0], str(addr_[1])]
+            for client in clients:
+                client_detail = clients[client]
+                if client_detail[0] == target_username:
+                    target = (client_id.split(':')[0], client_detail[3])
+                    chat_request = socket.socket(socket.AF_INET,
+                                                 socket.SOCK_STREAM)
+                    chat_request.connect(target)
+                    chat_request.sendall(clients[client_id][0])
+                    chat_request.close()
+                    break
+            else:
+                conn_.sendall('User not found')
+            time.sleep(10.0)
+            if ok:
+                conn_.sendall(target[0] + ';' + str(target[1]))
+            else:
+                conn_.sendall('Refused/RTO')
+        elif request == 'y':
+            ok = True
+            conn_.sendall(requester[0] + ';' + str(requester[2]))
         elif request == 'q':
             break
         else:

@@ -13,6 +13,7 @@ old_unread_posts = {}
 client_socket = ''
 pull_thread = ''
 push_thread = ''
+chat_peer = ()
 
 
 class RepeatingTimer:
@@ -188,6 +189,46 @@ def push_listener(port_number):
     push_socket.close()
 
 
+def chat_request_listener(port_number):
+    try:
+        chat_request = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        chat_request.bind(('', port_number))
+    except socket.error, msg:
+        print('Error code: ' + str(msg[0]) +
+              ' , Error message: ' + msg[1])
+        sys.exit()
+
+    chat_request.listen(1)
+
+    while True:
+        try:
+            conn, addr = chat_request.accept()
+        except socket.timeout:
+            print('Timed out waiting for a connection')
+            continue
+
+        username = conn.recv(RECV_BUFFER)
+        print('Chat request from ' + username + '. Accept? [y/n]')
+
+        break
+
+    chat_request.close()
+
+
+def chat_receiver(port_number):
+    chat_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    chat_socket.bind(('', port_number))
+    while 1:
+        message, sender_address = chat_socket.recvfrom(RECV_BUFFER)
+        print(message)
+        # reply = raw_input('')
+        # if reply == 'stop':
+        #     break
+        # chat_receiver.sendto(reply, sender_address)
+
+
+
+
 if __name__ == '__main__':
     # TODO: Validate user input
     # mode: push or pull
@@ -203,6 +244,8 @@ if __name__ == '__main__':
     server_port_number = int(sys.argv[5])
 
     available_port = get_available_port()
+
+    ch_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Bind the client to available port
     try:
@@ -226,9 +269,13 @@ if __name__ == '__main__':
 
     print('Socket connected to ' + server_name + ' on IP ' + server_ip)
 
+    chat_port = get_available_port()
+    start_new_thread(chat_request_listener, (chat_port,))
+
     # Identify client
     client_socket.sendall(
-        's;' + user_name + ';' + mode + ';' + polling_interval)
+        's;' + user_name + ';' + mode + ';' + polling_interval + ';' + str(
+            chat_port))
     server_response = client_socket.recv(RECV_BUFFER)
 
     if server_response != 'ok':
@@ -245,9 +292,9 @@ if __name__ == '__main__':
         user_command = str(raw_input(''))
         user_command = user_command.split(' ')
 
-        request = user_command[0]
+        request = user_command[0].upper()
 
-        if request.upper() == 'DISPLAY':
+        if request == 'DISPLAY':
             if mode == 'pull':
                 cur_book, cur_page_number = user_command[1], user_command[2]
                 try:
@@ -347,18 +394,15 @@ if __name__ == '__main__':
                           ' , Error message: ' + msg[1])
                     sys.exit()
         # Post_to_forum line_number content_of_post
-        elif request == 'post_to_forum':
+        elif request == 'POST_TO_FORUM':
             content_of_post = ' '.join(user_command[2:])
             line_number = int(user_command[1])
-            if cur_book != '':
-                if line_number < 1 or line_number > 9:
-                    print('Unable to post, incorrect page number.\n')
-                else:
-                    post_to_forum(str(line_number), content_of_post)
+            if cur_book != '' and cur_page_number != '':
+                post_to_forum(str(line_number), content_of_post)
             else:
                 print('Unable to post, no ebook opened.\n')
         # Read unread post on certain line number
-        elif request == 'read_post':
+        elif request == 'READ_POST':
             update_post()
 
             post_to_read = []
@@ -388,7 +432,40 @@ if __name__ == '__main__':
                 print('No new post\n')
             else:
                 print(post_to_read)
-        elif request == 'q':
+        elif request == 'CHAT_REQUEST':
+            client_socket.sendall('chat' + ';' + user_command[1])
+
+            server_response = client_socket.recv(RECV_BUFFER).split(';')
+            chat_peer = tuple(server_response)
+            print(chat_peer)
+            print('Ready to chat')
+            start_new_thread(chat_receiver, (chat_port,))
+
+        elif request == 'Y':
+
+            client_socket.sendall(request.lower())
+
+            server_response = client_socket.recv(RECV_BUFFER).split(';')
+            chat_peer = tuple(server_response)
+            print(chat_peer)
+            print('Ready to chat')
+            start_new_thread(chat_receiver, (chat_port,))
+            # ch_socket = socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # while 1:
+            #     message = raw_input('')
+            #     if message.upper() == 'STOP':
+            #         break
+            #     ch_socket.sendto(message, (sender_ip, sender_port))
+            # ch_socket.close()
+
+        elif request == 'N':
+            client_socket.sendall(request.lower())
+
+        elif request == "CHAT":
+            print(request)
+            ch_socket.sendto(' '.join(user_command[2:]),
+                             (chat_peer[0], int(chat_peer[1])))
+        elif request == 'Q':
             client_socket.sendall('q')
             if pull_thread:
                 pull_thread.cancel()
