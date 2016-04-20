@@ -1,3 +1,4 @@
+import pickle
 import socket
 import sys
 import time
@@ -5,17 +6,19 @@ import uuid
 from thread import *
 
 RECV_BUFFER = 4096
-# dict with key ip:port_number and value: username, mode, polling_int, chat_listener_port
+# dict with key ip:port_number and value: username, mode, polling_int, chat_port
 clients = dict()
-# dict with key book_name_page_number
-# and value: [post_id, username, line_number, post]
+# key: book_name+page_number
+# value: [post_id, username, line_number, post]
 discussions = dict()
 # dict with key username and value: [posts_id]
 read_posts = dict()
+# [ip_address, port_number, username]
 push_list = []
+
 requester = ()
 target = ()
-ok = False
+target_acceptance = False
 
 
 def get_post(book_name, page_number, post_id):
@@ -44,7 +47,6 @@ def get_post_ids(book_name, page_number):
         posts = discussions[book_name + page_number]
         post_ids = ''
         for post in posts:
-            print post
             post_ids += post[0] + ';'
     except KeyError:
         return '0'
@@ -52,13 +54,11 @@ def get_post_ids(book_name, page_number):
         return post_ids[:-1]
 
 
-def get_ebook(book_name, page_number, id_, mode):
+def get_ebook(book_name, page_number):
     """
     Get ebook from file
     :param book_name: string
     :param page_number: string
-    :param id_:
-    :param mode:
     :return: (string) ebook
     """
     try:
@@ -72,97 +72,135 @@ def get_ebook(book_name, page_number, id_, mode):
         return ebook
 
 
-def push_notification(book_name, page_number, post_content):
+def push_notification(book_name, page_number, post):
+    """
+    Send notification to all push_list client
+    :param book_name:
+    :param page_number:
+    :param post:
+    :return:
+    """
     push_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    for push_client in push_list:
-        push_socket.connect((push_client[0], push_client[1]))
+    for client_ip_address, client_port_listener, username in push_list:
+        push_socket.connect((client_ip_address, client_port_listener))
         push_socket.sendall(
-            book_name + ';' + page_number + ';' + str(post_content[0]) + ';' +
-            post_content[1] + ';' + str(post_content[2]) + ';' + post_content[
-                3])
+            book_name + ';' + page_number + ';' + str(post[0]) + ';' +
+            post[1] + ';' + str(post[2]) + ';' + post[3])
         push_socket.close()
+        print('New post pushed to ' + username + '.')
 
 
-def client_thread(conn_, addr_):
+def client_thread(client_conn, client_addr):
     """
     Spawned thread for each client
-    :param conn_: client connection
-    :param addr_: client address
+    :param client_conn: client connection
+    :param client_addr: client address
     :return: none
     """
+
     global requester
     global target
-    global ok
+    global target_acceptance
+
     # client_id = ip_address + port_number
-    client_id = addr_[0] + ':' + str(addr_[1])
+    client_id = client_addr[0] + ':' + str(client_addr[1])
+    client_ip_address = client_addr[0]
+    client_port_number = client_addr[1]
+    chat_port = 0
+    username = ''
+
     while True:
-        data = conn_.recv(RECV_BUFFER)
-        print(client_id + ": " + data)
+        data = client_conn.recv(RECV_BUFFER)
+        if client_id in clients:
+            print(clients[client_id][0] + ": " + data)
 
         data = data.split(';')
         request = data[0]
 
-        # Setup request in format: 's', username, mode,
-        #                           polling_interval, chat_listener_port
+        # Setup request.
+        # Format: 's', username, mode, polling_interval, chat_port
         if request == 's':
-            clients.update({client_id: [data[1],
-                                        data[2],
-                                        int(data[3]),
-                                        int(data[4])]})
-            conn_.sendall('ok')
-            if data[2] == 'push':
-                listener_port = int(conn_.recv(RECV_BUFFER))
-                push_list.append([addr_[0], listener_port])
-                print(push_list)
-        # Display request in format: 'd', username, book_name, page_number
+            username, mode, polling_interval, chat_port = data[1:]
+            clients[client_id] = [username,
+                                  mode,
+                                  int(polling_interval),
+                                  int(chat_port)]
+
+            client_conn.sendall('ok')
+
+            print(client_id + ' identified as ' +
+                  username + ' [' + mode + ' mode]')
+
+            if mode == 'push':
+                notification_port = int(client_conn.recv(RECV_BUFFER))
+
+                discussions_string = pickle.dumps(discussions)
+
+                client_conn.sendall(discussions_string)
+                data = client_conn.recv(RECV_BUFFER)
+
+                if data == 'ok':
+                    push_list.append(
+                        [client_ip_address, notification_port, username])
+                    print('Discussion data successfully sent to ' + username)
+                    print(push_list)
+                else:
+                    print('Failed to send new posts')
+        # Display request.
+        # Format: 'd', book_name, page_number
         elif request == 'd':
-            ebook = get_ebook(data[1], data[2], client_id,
-                              clients[client_id][1])
+            ebook = get_ebook(data[1], data[2])
             if not ebook:
-                conn_.sendall('File not found')
+                client_conn.sendall('File not found')
             else:
-                conn_.sendall(ebook)
-        # Check post request in format: 'c', book_name, page_number
+                client_conn.sendall(ebook)
+        # Get all post_ids for book_name + page_number request.
+        # Format: 'c', book_name, page_number
         elif request == 'c':
             post_ids = get_post_ids(data[1], data[2])
-            conn_.sendall(post_ids)
-        # Post to discussion in format: 'p', book_name, page_number,
-        #                               line_number, content_of_post
+            client_conn.sendall(post_ids)
+        # Post to discussion.
+        # Format: 'p', book_name, page_number, line_number, content_of_post
         elif request == 'p':
             username = clients[client_id][0]
             post_id = str(uuid.uuid4())[:8]
-            if get_ebook(data[1], data[2], client_id,
-                         username[1]):
-                if data[1] + data[2] in discussions:
-                    discussions[data[1] + data[2]].append(
-                        [post_id, username, data[3],
-                         data[4]])
+            book_name, page_number, line_number, content = data[1:]
+            post = [post_id, username, line_number, content]
+
+            if get_ebook(book_name, page_number):
+                if (book_name + page_number) in discussions:
+                    discussions[book_name + page_number].append(post)
                 else:
-                    discussions[data[1] + data[2]] = [[
-                        post_id,
-                        username,
-                        data[3],
-                        data[4]]]
-                print(discussions)
-                conn_.sendall('Post #' + post_id + ' saved')
+                    discussions[book_name + page_number] = [post]
+                client_conn.sendall('Post #' + post_id + ' saved')
+
+            print('New post received from ' + username + '.')
+            print('Post added to the database and given serial number ' +
+                  post_id + '.')
+
+            # Push notification to push clients
             if push_list:
-                push_notification(data[1], data[2],
-                                  [post_id, username, data[3],
-                                   data[4]])
-        # Get post request in format: 'g', book_name, page_number, post_id
+                push_notification(book_name, page_number, post)
+            else:
+                print('Push list empty. No action required.')
+        # Get post detail for post_id.
+        # Format: 'g', book_name, page_number, post_id
         elif request == 'g':
             post = get_post(data[1], data[2], data[3])
             if post:
-                conn_.sendall(post)
+                client_conn.sendall(post)
             else:
-                conn_.sendall('Post not found')
+                client_conn.sendall('Post with ' + data[3] + 'not found')
         # Setup chat module
+        # Format: 'chat', username
         elif request == 'chat':
-            requester = (addr_[0], addr_[1], clients[client_id][3])
+            requester = (client_ip_address, client_port_number,
+                         chat_port, username)
             target_username = data[1]
-            print('Chat request from ' + clients[client_id][
-                0] + ' to talk to ' + target_username)
-            # requester = [addr_[0], str(addr_[1])]
+
+            print('Chat request from ' + username +
+                  ' to talk to ' + target_username)
+
             for client in clients:
                 client_detail = clients[client]
                 if client_detail[0] == target_username:
@@ -171,25 +209,38 @@ def client_thread(conn_, addr_):
                                                  socket.SOCK_STREAM)
                     chat_request.connect(target)
                     chat_request.sendall(clients[client_id][0])
+                    print('Chat request to ' + target_username +
+                          ' has been sent')
                     chat_request.close()
                     break
             else:
-                conn_.sendall('User not found')
+                client_conn.sendall('0')
+                continue
+
+            # Wait for reply from target user
             time.sleep(10.0)
-            if ok:
-                conn_.sendall(target[0] + ';' + str(target[1]))
+
+            if target_acceptance:
+                print(target_username + ' accepted the chat request from ' +
+                      username)
+                client_conn.sendall(target[0] + ';' + str(target[1]))
             else:
-                conn_.sendall('Refused/RTO')
+                client_conn.sendall('0')
+        # Target accept chat request
         elif request == 'y':
-            ok = True
-            conn_.sendall(requester[0] + ';' + str(requester[2]))
+            target_acceptance = True
+            client_conn.sendall(requester[0] + ';' + str(requester[2]) + ';' +
+                                requester[3])
+        # Target refuse chat request
+        elif request == 'n':
+            target_acceptance = False
         elif request == 'q':
             break
         else:
-            conn_.sendall(str(data))
+            client_conn.sendall(str(data))
 
-    print(client_id + ' is disconnected')
-    conn_.close()
+    print(client_id + ' is disconnected.')
+    client_conn.close()
 
 
 if __name__ == '__main__':
@@ -208,18 +259,17 @@ if __name__ == '__main__':
         sys.exit()
 
     server_socket.listen(10)
-    print("The server is listening on port number " + str(server_port))
-    print("The database for discussion posts has been initialised")
+    print("The server is listening on port number " + str(server_port) + '.')
+    print("The database for discussion posts has been initialised.")
 
     while True:
         try:
-            print('Ready to receive')
             conn, addr = server_socket.accept()
         except socket.timeout:
-            print('Timed out waiting for a connection')
+            print('Timed out waiting for a connection.')
             continue
 
-        print(addr[0] + ': ' + str(addr[1]) + ' is connected')
+        print(addr[0] + ':' + str(addr[1]) + ' is connected.')
 
         start_new_thread(client_thread, (conn, addr))
 
