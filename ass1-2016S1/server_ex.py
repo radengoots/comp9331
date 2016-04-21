@@ -108,6 +108,7 @@ def client_thread(client_conn, client_addr):
     client_port_number = client_addr[1]
     chat_port = 0
     username = ''
+    mode = ''
 
     while True:
         data = client_conn.recv(RECV_BUFFER)
@@ -240,6 +241,14 @@ def client_thread(client_conn, client_addr):
             client_conn.sendall(str(data))
 
     print(client_id + ' is disconnected.')
+
+    # Remove disconnected push_list client
+    if mode == 'push':
+        for index in range(len(push_list)):
+            if push_list[index][2] == username:
+                print(push_list.pop(index)[2] + ' is removed from push list')
+                break
+    
     client_conn.close()
 
 
