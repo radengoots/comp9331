@@ -248,7 +248,7 @@ def client_thread(client_conn, client_addr):
             if push_list[index][2] == username:
                 print(push_list.pop(index)[2] + ' is removed from push list')
                 break
-    
+
     client_conn.close()
 
 
