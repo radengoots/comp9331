@@ -133,7 +133,19 @@ def client_thread(client_conn, client_addr):
                   username + ' [' + mode + ' mode]')
 
             if mode == 'push':
-                notification_port = int(client_conn.recv(RECV_BUFFER))
+                notification_port, summary = client_conn.recv(
+                    RECV_BUFFER).split(';')
+                notification_port = int(notification_port)
+
+                push_list.append(
+                    [client_ip_address, notification_port, username])
+
+                print(username + ' has added into push list.')
+
+                if summary == '0':
+                    print('Client summary received and it is empty.')
+                else:
+                    pass
 
                 discussions_string = pickle.dumps(discussions)
 
@@ -141,10 +153,9 @@ def client_thread(client_conn, client_addr):
                 data = client_conn.recv(RECV_BUFFER)
 
                 if data == 'ok':
-                    push_list.append(
-                        [client_ip_address, notification_port, username])
-                    print('Discussion data successfully sent to ' + username)
-                    print(push_list)
+                    print('Discussion data successfully received by ' +
+                          username + '.')
+                    print(discussions)
                 else:
                     print('Failed to send new posts')
         # Display request.

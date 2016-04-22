@@ -297,7 +297,10 @@ if __name__ == '__main__':
     # Push mode setup
     if mode == 'push':
         notification_port = get_available_port()
-        client_socket.sendall(str(notification_port))
+        if not unread_posts:
+            client_socket.sendall(str(notification_port) + ';0')
+        else:
+            client_socket.sendall(str(notification_port) + ';1')
 
         unread_posts_string = client_socket.recv(RECV_BUFFER)
 
