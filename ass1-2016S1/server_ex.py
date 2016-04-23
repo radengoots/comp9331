@@ -155,9 +155,13 @@ def client_thread(client_conn, client_addr):
                 if data == 'ok':
                     print('Discussion data successfully received by ' +
                           username + '.')
-                    print(discussions)
+                    for book in discussions:
+                        print(book)
+                        for post in discussions[book]:
+                            print('   ' + ' | '.join(post))
                 else:
                     print('Failed to send new posts')
+
         # Display request.
         # Format: 'd', book_name, page_number
         elif request == 'd':
@@ -252,6 +256,9 @@ def client_thread(client_conn, client_addr):
             client_conn.sendall(str(data))
 
     print(client_id + ' is disconnected.')
+
+    # Remove disconnected client from the database
+    clients.pop(client_id, None)
 
     # Remove disconnected push_list client
     if mode == 'push':
